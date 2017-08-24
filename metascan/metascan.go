@@ -6,9 +6,14 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/miekg/dns"
 )
 
 // Api struct for key, URL and method
@@ -51,7 +56,7 @@ type JsonExtended struct {
 type JsonResults []struct {
 	Item       string       `json:"item"`
 	Found      bool         `json:"found"`
-	Score      float32      `json:"score"`
+	Score      float64      `json:"score"`
 	FromSubnet bool         `json:"fromSubnet"`
 	Sources    []string     `json:"sources"`
 	Wl         bool         `json:"wl"`
@@ -61,8 +66,16 @@ type JsonResults []struct {
 
 type JsonRecord struct {
 	Results       JsonResults `json:"results"`
-	ExecutionTime int         `json:"executionTime"`
+	ExecutionTime int64       `json:"executionTime"`
 	Status        string      `json:"status"`
+}
+
+type Results struct {
+	IP          string
+	Match       bool
+	Expected    bool
+	TimeElapsed int64
+	Length      int
 }
 
 // Init specify an authentication key for authentication
@@ -73,13 +86,12 @@ func (myapi Api) Init(apiKey string, ipcheck bool) (myapi2 Api, err error) {
 		//return myapi, errors.New("API Key must be specified")
 	}
 
-	fmt.Println("Using ", apiKey)
 	myapi.apiURL = "api.metascan.io"
 	myapi.apiProtocol = myapi.ToggleSSL(true) // Default to SSL
 	myapi.ApiMethod = "http"
 	myapi.apiVersion = "v1"
 
-	// Check
+	// Check if https required
 	if myapi.apiProtocol == "http" && apiKey != "" && ipcheck == false {
 		return myapi, errors.New("https required if using API key without ip check")
 	}
@@ -87,45 +99,96 @@ func (myapi Api) Init(apiKey string, ipcheck bool) (myapi2 Api, err error) {
 	return myapi, nil
 }
 
+// Query a domain/IP via any method (text, html, json, jsonx, dns)
+func (myapi Api) Query(query string) (m JsonRecord, err error) {
+
+	// If DNS, run a specific function, otherwise all web queries via http.Get
+	if myapi.ApiMethod == "dns" {
+		results, _ := myapi.QueryDNS(query, 3)
+		m, _ = myapi.ParseDNS(results)
+
+	} else {
+		res, _ := http.Get(myapi.getUrl(query))
+		m, _ = myapi.parseResult(res)
+	}
+
+	return m, nil
+
+}
+
 // Verify a query to metascan is returning valid data
-func (myapi Api) Verify(status bool) error {
+func (myapi Api) Verify(status bool, verbose bool) (totalResults []Results, err error) {
 
-	// Good
-	tests := make(map[int]string)
+	tests := make(map[string]bool)
 
-	tests[0] = "okdomain.org"
-	tests[1] = "127.9.9.4"
+	// Records that will pass (whitelist)
+	tests["okdomain.org"] = false
+	tests["127.9.9.4"] = false
 
-	tests[2] = "baddomain.org"
-	tests[3] = "127.9.9.1"
-	tests[4] = "127.9.9.2"
-	tests[5] = "127.9.9.3"
-	tests[6] = "127.9.9.4"
+	// Records that will fail (blacklisted)
+	tests["baddomain.org"] = true
+	tests["127.9.9.1"] = true
+	tests["127.9.9.2"] = true
+	tests["127.9.9.3"] = true
 
-	for i := 0; i < len(tests); i++ {
+	//for i := 0; i < len(tests); i++ {
+	for key, value := range tests {
 
-		fmt.Println("Testing", tests[i])
+		if verbose == true {
+			fmt.Println("Testing", key, value)
+		}
 
-		res, _ := http.Get(myapi.getUrl(tests[i]))
+		// Time the query length
+		startTime := time.Now()
 
-		match, err := myapi.isMatch(res)
+		// Fetch the result
+		response, err := myapi.Query(key)
+
+		m := time.Duration(time.Since(startTime))
+		durationTime := int64(m / time.Millisecond)
+
+		if verbose == true {
+			fmt.Println("Response =>", response)
+		}
 
 		if err != nil {
 			fmt.Println(err)
 		}
 
-		if match == true {
-			fmt.Println(tests[i], ": FAIL!")
-		} else {
-			fmt.Println(tests[i], ": OK!")
+		// Does it match?
+		match := myapi.IsMatch(&response)
+
+		/*
+			if match == true && value != true {
+				fmt.Println(key, ": Failed (", durationTime, ")")
+			}
+
+			if match == true {
+				fmt.Println(key, ": Matched (", durationTime, ")")
+			} else {
+				fmt.Println(key, ": No hit (", durationTime, ")")
+			}
+
+			if verbose == true {
+				fmt.Println("Resp => ", res, "\n")
+			}
+		*/
+
+		// Store the results and return the group in a struct, regardless of the method
+		result := Results{
+			IP:          key,
+			TimeElapsed: durationTime,
+			Match:       match,
+			Expected:    value,
 		}
 
-		fmt.Println("Resp => ", res, "\n")
+		// Append each result
+		totalResults = append(totalResults, result)
 
 	}
 
-	return nil
-
+	// Return all matches
+	return totalResults, nil
 }
 
 // getUrl Return a URL to query metascan
@@ -134,52 +197,72 @@ func (myapi Api) getUrl(domain string) string {
 	// Encode the apiKey if specified
 	v := url.Values{}
 
+	// If the API key is specified, add the query URI
 	if myapi.apiKey != "" {
 		v.Set("key", myapi.apiKey)
 	}
 
+	// TODO: Improve
 	str := myapi.apiProtocol + "://" + myapi.apiURL + "/" + myapi.apiVersion + "/check/" + myapi.ApiMethod + "/" + domain + "?" + v.Encode()
-
-	fmt.Println(str)
 
 	return str
 }
 
-//
-func (myapi Api) isMatch(resp *http.Response) (status bool, err error) {
+// parseResult returns a struct with the metascan response, regardless of the query method
+func (myapi Api) parseResult(resp *http.Response) (data JsonRecord, err error) {
 
-	fmt.Println("\nisMatch launch")
+	// Init our object (Results is a []struct must be manually created)
+	data = JsonRecord{
+		Results: []struct {
+			Item       string       `json:"item"`
+			Found      bool         `json:"found"`
+			Score      float64      `json:"score"`
+			FromSubnet bool         `json:"fromSubnet"`
+			Sources    []string     `json:"sources"`
+			Wl         bool         `json:"wl"`
+			Wldata     string       `json:"wldata"`
+			Extended   JsonExtended `json:"extended"`
+		}{
+			{},
+		},
+	}
 
+	// Read the response
 	body, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		return false, err
+		return data, err
 	}
-
+	// Choose which method use (http, text, json/jsonx)
 	switch myapi.ApiMethod {
 
 	case "http":
 		{
 
 			if resp.StatusCode == 204 {
-				return false, nil
+				data.Results[0].Found = false
 			} else {
-				return true, nil
+				data.Results[0].Found = true
 			}
 
+			// Populate our struct with details of the request
+			data.Results[0].Score, _ = strconv.ParseFloat(resp.Header.Get("X-Metascan-Score"), 32)
+
+			// Populate our struct with details of the request
+			data.Results[0].Sources = strings.Split(";", resp.Header.Get("X-Metascan-Sources"))
+
+			data.Results[0].Wldata = resp.Header.Get("X-Metascan-Wl")
+
+			data.Status = resp.Header.Get("Success")
 		}
 
 	case "text":
 		{
 
 			// Read the body and split from the specified API formatting
-
 			bodyString := string(body)
 			head := strings.Split(bodyString, ":")
-			data := strings.Split(head[1], ",")
-
-			fmt.Println("Head =>", head, bodyString)
-			fmt.Println("Data =>", data)
+			str := strings.Split(head[1], ",")
 
 			/*
 				http://docs.metascan.io/?php#http-format
@@ -192,10 +275,18 @@ func (myapi Api) isMatch(resp *http.Response) (status bool, err error) {
 				wldata contains the data from the white list, and
 				score is followed by the list of sources where the item was found.
 			*/
-			if data[0] == "true" {
-				return true, nil
+			if str[0] == "true" {
+				data.Results[0].Found = true
 			} else {
-				return false, nil
+				data.Results[0].Found = false
+			}
+
+			// TODO: Should be a float32 vs float64
+			data.Results[0].Score, _ = strconv.ParseFloat(str[3], 32)
+
+			// TODO: Group together all sources into a response array
+			if len(str) > 3 {
+				//data.Results[0].Sources = str[4:len(str)]
 			}
 
 		}
@@ -223,24 +314,14 @@ func (myapi Api) isMatch(resp *http.Response) (status bool, err error) {
 				}
 			*/
 
+			// Decode the JSON response into our defined struct
 			dec := json.NewDecoder(strings.NewReader(string(body)))
 			for {
 
-				var m JsonRecord
-
-				if err := dec.Decode(&m); err == io.EOF {
-					return false, errors.New("JSON parse error")
+				if err := dec.Decode(&data); err == io.EOF {
+					return data, nil
 				} else if err != nil {
-					return false, err
-				}
-
-				fmt.Println(m)
-
-				// Return if the query matched
-				if m.Results[0].Found == true {
-					return true, nil
-				} else {
-					return false, nil
+					return data, err
 				}
 
 			}
@@ -249,7 +330,26 @@ func (myapi Api) isMatch(resp *http.Response) (status bool, err error) {
 
 	}
 
-	return false, nil
+	return data, nil
+
+}
+
+// TODO: getInfo returns a struct with expanded information on why the result listed
+func (myapi Api) getInfo(resp *http.Response) (status bool, err error) {
+
+	return true, nil
+
+}
+
+// isMatch return if a result matched a whitelist/blacklist
+func (myapi Api) IsMatch(response *JsonRecord) (status bool) {
+
+	// Is the record blacklisted?
+	if response.Results[0].Found == true {
+		return true
+	}
+
+	return false
 
 }
 
@@ -266,21 +366,105 @@ func (myapi Api) ToggleSSL(ssl bool) (str string) {
 
 }
 
+// Return the API key used
 func (myapi Api) GetConf() string {
 
 	return myapi.apiKey
 }
 
-// Query an IP(s) against the metascan API
-func (myapi Api) QueryJSON(ip []string) (json string) {
+// Preform a DNS query against the metascan API
+func (myapi Api) ParseDNS(results []net.IP) (data JsonRecord, err error) {
 
-	return ""
+	// Move to a function to init?
+	// Init our object (Results is a []struct must be manually created)
+	data = JsonRecord{
+		Results: []struct {
+			Item       string       `json:"item"`
+			Found      bool         `json:"found"`
+			Score      float64      `json:"score"`
+			FromSubnet bool         `json:"fromSubnet"`
+			Sources    []string     `json:"sources"`
+			Wl         bool         `json:"wl"`
+			Wldata     string       `json:"wldata"`
+			Extended   JsonExtended `json:"extended"`
+		}{
+			{},
+		},
+	}
+
+	// Parse the result from DNS and build the struct similar to http/text/json(x) methods
+
+	// List through all matches, do we have a hit?
+	for _, match := range results {
+
+		// Firstly, do we have a blacklist hit?
+		if strings.HasPrefix(match.String(), "127.8.0") == false && strings.HasPrefix(match.String(), "127.") {
+			data.Results[0].Found = true
+		}
+
+		// Spamhaus
+		if strings.HasPrefix(match.String(), "127.0.0") {
+			//fmt.Println("Spamhaus hit")
+		}
+
+		// Spamhaus abuse
+		if strings.HasPrefix(match.String(), "127.0.1") {
+			//fmt.Println("Spamhaus abuse")
+		}
+
+		// URIBL match
+		if strings.HasPrefix(match.String(), "127.1.0") {
+			//fmt.Println("URIBL abuse")
+		}
+
+		// IP White lists from DNSWL
+		if strings.HasPrefix(match.String(), "127.8.0") {
+			//fmt.Println("DNSWL whitelist")
+		}
+
+	}
+
+	return data, nil
 
 }
 
 // Preform a DNS query against the metascan API
-func (myapi Api) QueryDNS(ip []string) (json string) {
+func (myapi Api) QueryDNS(query string, retry int) (json []net.IP, err error) {
 
-	return ""
+	// Assemble our DNS query parts
+	msg := new(dns.Msg)
+	msg.Id = dns.Id()
+	msg.RecursionDesired = true
+	msg.Question = make([]dns.Question, 1)
 
+	// Build the query
+	msg.Question[0] = dns.Question{Name: dns.Fqdn(query), Qtype: dns.TypeA, Qclass: dns.ClassINET}
+
+	// Use the metascan DNS server directly for the query
+	in, err := dns.Exchange(msg, myapi.apiURL+":53")
+
+	// Load the result(s) into a net.IP struct
+	result := []net.IP{}
+
+	// Timeout? Try again, max retry times
+	if err != nil {
+
+		// Failed, try again ...
+		if strings.HasSuffix(err.Error(), "i/o timeout") && retry > 0 {
+			retry--
+			return myapi.QueryDNS(query, retry)
+		}
+
+		return nil, err
+
+	}
+
+	// Append all responses into an array
+	for _, record := range in.Answer {
+		if t, ok := record.(*dns.A); ok {
+			result = append(result, t.A)
+		}
+	}
+
+	return result, nil
 }
