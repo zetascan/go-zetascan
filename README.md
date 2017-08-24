@@ -14,11 +14,11 @@ Because of the above, many developers asked if we could do something to reduce t
 To start, [signup for a developer key](https://metascan.io/signup/?lang=en) and begin to integrate MQS into your web-apps and mobile applications.
 
 ## go-metascan 
-The go-metascan provided an API interface to query the metascan service via HTTP or DNS, and provides examples on integrating your service, web-app or mobile application to prevent abuse via the metascan service.
+The go-metascan library provides an API interface to query metascan via HTTP or DNS, and provides examples on how to integrate your web-app or mobile application to prevent abuse.
 
 ## Examples
 
-Build the metascan-query utility to provide simple CLI tools to query the metascan service as an example.
+Build the metascan-query utility to provide a simple CLI tool to query the service.
 
 ```
 cd go-metascan
