@@ -1,4 +1,4 @@
-package main
+package metascanjson
 
 import (
 	"encoding/json"
