@@ -3,7 +3,7 @@
 
 ## Introduction
  
-The Metascan Query Services "MQS" was created to facilitate the real-time lookup of IP and Domain threat data into various applications and services. Currently there are dozens of various domain and IP data-feeds available to developers. Many of these feeds are available free of charge and some are paid for services when minimum query levels are exceeded. In addition, there are 2 main problems with trying to incorporate multiple data feed into a solution:
+The [Metascan Query Services](https://metascan.io/) "MQS" was created to facilitate the real-time lookup of IP and Domain threat data into various applications and services. Currently there are dozens of various domain and IP data-feeds available to developers. Many of these feeds are available free of charge and some are paid for services when minimum query levels are exceeded. In addition, there are 2 main problems with trying to incorporate multiple data feed into a solution:
 
 * The overlap between data feed providers in the content listed (IPs & URIs), and
 
