@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/metascanio/go-metascan/metascan"
+	"github.com/zetascanio/go-zetascan/zetascan"
 )
 
 func main() {
@@ -36,10 +36,10 @@ func main() {
 	}
 
 	var err error
-	var mymetascan metascan.Api
+	var myzetascan zetascan.Api
 
 	// Init with our API key
-	mymetascan, err = mymetascan.Init(*apiKey, *ipAuth)
+	myzetascan, err = myzetascan.Init(*apiKey, *ipAuth)
 
 	if err != nil {
 		fmt.Println(err)
@@ -80,13 +80,13 @@ func main() {
 
 			// Loop through all query methods
 			for _, value := range kvs {
-				mymetascan.ApiMethod = value
+				myzetascan.ApiMethod = value
 
 				if *csv == false {
 					fmt.Println("Testing ", value)
 				}
 
-				results, _ := mymetascan.Verify(true, *verbose)
+				results, _ := myzetascan.Verify(true, *verbose)
 
 				for i := range results {
 
@@ -107,9 +107,9 @@ func main() {
 	// Run a specific query, return the results to STDOUT
 	if *query != "" {
 
-		mymetascan.ApiMethod = *format
+		myzetascan.ApiMethod = *format
 
-		m, _ := mymetascan.Query(*query)
+		m, err := myzetascan.Query(*query)
 
 		if err != nil {
 			fmt.Println(err)

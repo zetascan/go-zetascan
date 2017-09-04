@@ -1,4 +1,4 @@
-package metascan
+package zetascan
 
 import (
 	"encoding/json"
@@ -86,6 +86,7 @@ func (myapi Api) Init(apiKey string, ipcheck bool) (myapi2 Api, err error) {
 		//return myapi, errors.New("API Key must be specified")
 	}
 
+	// TODO: Change to new zetascan URL
 	myapi.apiURL = "api.metascan.io"
 	myapi.apiProtocol = myapi.ToggleSSL(true) // Default to SSL
 	myapi.ApiMethod = "http"
@@ -108,15 +109,39 @@ func (myapi Api) Query(query string) (m JsonRecord, err error) {
 		m, _ = myapi.ParseDNS(results)
 
 	} else {
-		res, _ := http.Get(myapi.getUrl(query))
-		m, _ = myapi.parseResult(res)
+		res, err := http.Get(myapi.getUrl(query))
+
+		// URL malformed? Return an error
+		if res.StatusCode == 404 {
+			return m, errors.New("Invalid request, check URL not malformed: " + myapi.getUrl(query))
+		}
+
+		// Forbidden? Return an error
+		if res.StatusCode == 403 {
+			return m, errors.New("Request forbidden, check API key or IP for authorization: " + myapi.getUrl(query))
+		}
+
+		//fmt.Println(myapi.getUrl(query), res, err)
+
+		if err != nil {
+			return m, err
+		}
+
+		m, err = myapi.parseResult(res)
+
+		//fmt.Println(err)
+
+		if err != nil {
+			return m, err
+		}
+
 	}
 
 	return m, nil
 
 }
 
-// Verify a query to metascan is returning valid data
+// Verify a query to zetascan is returning valid data
 func (myapi Api) Verify(status bool, verbose bool) (totalResults []Results, err error) {
 
 	tests := make(map[string]bool)
@@ -191,7 +216,7 @@ func (myapi Api) Verify(status bool, verbose bool) (totalResults []Results, err 
 	return totalResults, nil
 }
 
-// getUrl Return a URL to query metascan
+// getUrl Return a URL to query zetascan
 func (myapi Api) getUrl(domain string) string {
 
 	// Encode the apiKey if specified
@@ -208,7 +233,7 @@ func (myapi Api) getUrl(domain string) string {
 	return str
 }
 
-// parseResult returns a struct with the metascan response, regardless of the query method
+// parseResult returns a struct with the zetascan response, regardless of the query method
 func (myapi Api) parseResult(resp *http.Response) (data JsonRecord, err error) {
 
 	// Init our object (Results is a []struct must be manually created)
@@ -246,12 +271,12 @@ func (myapi Api) parseResult(resp *http.Response) (data JsonRecord, err error) {
 			}
 
 			// Populate our struct with details of the request
-			data.Results[0].Score, _ = strconv.ParseFloat(resp.Header.Get("X-Metascan-Score"), 32)
+			data.Results[0].Score, _ = strconv.ParseFloat(resp.Header.Get("X-zetascan-Score"), 32)
 
 			// Populate our struct with details of the request
-			data.Results[0].Sources = strings.Split(";", resp.Header.Get("X-Metascan-Sources"))
+			data.Results[0].Sources = strings.Split(";", resp.Header.Get("X-zetascan-Sources"))
 
-			data.Results[0].Wldata = resp.Header.Get("X-Metascan-Wl")
+			data.Results[0].Wldata = resp.Header.Get("X-zetascan-Wl")
 
 			data.Status = resp.Header.Get("Success")
 		}
@@ -265,7 +290,7 @@ func (myapi Api) parseResult(resp *http.Response) (data JsonRecord, err error) {
 			str := strings.Split(head[1], ",")
 
 			/*
-				http://docs.metascan.io/?php#http-format
+				http://docs.zetascan.io/?php#http-format
 				item:bool,bool,wldata,score,source
 
 				Where:
@@ -295,7 +320,7 @@ func (myapi Api) parseResult(resp *http.Response) (data JsonRecord, err error) {
 		{
 
 			/*
-				http://docs.metascan.io/?php#json-format
+				http://docs.zetascan.io/?php#json-format
 
 				Formatting of a JSON response:
 
@@ -372,7 +397,7 @@ func (myapi Api) GetConf() string {
 	return myapi.apiKey
 }
 
-// Preform a DNS query against the metascan API
+// Preform a DNS query against the zetascan API
 func (myapi Api) ParseDNS(results []net.IP) (data JsonRecord, err error) {
 
 	// Move to a function to init?
@@ -428,7 +453,7 @@ func (myapi Api) ParseDNS(results []net.IP) (data JsonRecord, err error) {
 
 }
 
-// Preform a DNS query against the metascan API
+// Preform a DNS query against the zetascan API
 func (myapi Api) QueryDNS(query string, retry int) (json []net.IP, err error) {
 
 	// Assemble our DNS query parts
@@ -440,7 +465,7 @@ func (myapi Api) QueryDNS(query string, retry int) (json []net.IP, err error) {
 	// Build the query
 	msg.Question[0] = dns.Question{Name: dns.Fqdn(query), Qtype: dns.TypeA, Qclass: dns.ClassINET}
 
-	// Use the metascan DNS server directly for the query
+	// Use the zetascan DNS server directly for the query
 	in, err := dns.Exchange(msg, myapi.apiURL+":53")
 
 	// Load the result(s) into a net.IP struct

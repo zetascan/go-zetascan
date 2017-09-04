@@ -1,4 +1,4 @@
-package metascanjson
+package zetascanjson
 
 import (
 	"encoding/json"

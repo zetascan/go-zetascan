@@ -3,30 +3,30 @@ package main
 import (
 	"fmt"
 
-	"github.com/metascanio/go-metascan/metascan"
+	"github.com/zetascanio/go-zetascan/zetascan"
 )
 
 func main() {
 
 	var err error
-	var mymetascan metascan.Api
+	var myzetascan zetascan.Api
 
 	apiKey := ""   // Speciy an IP key
-	ipAuth := true // Auth via the IP address, which must be added via the metascan developer portal
+	ipAuth := true // Auth via the IP address, which must be added via the zetascan developer portal
 	query := "baddomain.org"
 
 	// Init with our API key
-	mymetascan, err = mymetascan.Init(apiKey, ipAuth)
+	myzetascan, err = myzetascan.Init(apiKey, ipAuth)
 
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	mymetascan.ApiMethod = "json"
+	myzetascan.ApiMethod = "json"
 
-	m, _ := mymetascan.Query(query)
+	m, _ := myzetascan.Query(query)
 
-	if mymetascan.IsMatch(&m) {
+	if myzetascan.IsMatch(&m) {
 
 		// Add logic, IP/domain is not trusted
 	} else {

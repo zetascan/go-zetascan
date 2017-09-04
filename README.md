@@ -1,9 +1,9 @@
-# go-metascan
-#### Development SDK/library for the metascan API in Go
+# go-zetascan
+#### Development SDK/library for the zetascan API in Go
 
 ## Introduction
  
-The [Metascan Query Services](https://metascan.io/) "MQS" was created to facilitate the real-time lookup of IP and Domain threat data into various applications and services. Currently there are dozens of various domain and IP data-feeds available to developers. Many of these feeds are available free of charge and some are paid for services when minimum query levels are exceeded. In addition, there are 2 main problems with trying to incorporate multiple data feed into a solution:
+The [Zetascan Query Services](https://zetascan.com/) "ZQS" was created to facilitate the real-time lookup of IP and Domain threat data into various applications and services. Currently there are dozens of various domain and IP data-feeds available to developers. Many of these feeds are available free of charge and some are paid for services when minimum query levels are exceeded. In addition, there are 2 main problems with trying to incorporate multiple data feed into a solution:
 
 * The overlap between data feed providers in the content listed (IPs & URIs), and
 
@@ -11,30 +11,30 @@ The [Metascan Query Services](https://metascan.io/) "MQS" was created to facilit
 
 Because of the above, many developers asked if we could do something to reduce the complexity related to accessing and using threat data as part of their applications - MQS is our solution. We are introducing a more elegant API for developers, with an affordable pricing model to match.
 
-To start, [signup for a developer key](https://metascan.io/signup/?lang=en) and begin to integrate MQS into your web-apps and mobile applications.
+To start, [signup for a developer key](https://zetascan.com/signup/?lang=en) and begin to integrate MQS into your web-apps and mobile applications.
 
-## go-metascan 
-The go-metascan library provides an API interface to query metascan via HTTP or DNS, and provides examples on how to integrate your web-app or mobile application to prevent abuse.
+## go-zetascan 
+The go-zetascan library provides an API interface to query zetascan via HTTP or DNS, and provides examples on how to integrate your web-app or mobile application to prevent abuse.
 
 ## Examples
 
-Build the metascan-query utility to provide a simple CLI tool to query the service.
+Build the zetascan-query utility to provide a simple CLI tool to query the service.
 
 ```
-cd go-metascan
-go build metascan-query.go
+cd go-zetascan
+go build zetascan-query.go
 ```
 
 Or alternatively, run directly
 
 ```
-go run metascan-query.go
+go run zetascan-query.go
 ```
 
 ### Usage:
 
 ```
-./metascan-query -h
+./zetascan-query -h
 
 -query:
   -apikey string
@@ -57,10 +57,10 @@ go run metascan-query.go
 
 ### Example domain query via JSON
 
-Query the metascan service using the JSON API method. View the [developer docs](http://docs.metascan.io/) for more information on the methods available.
+Query the zetascan service using the JSON API method. View the [developer docs](http://docs.zetascan.com/) for more information on the methods available.
 
 ```
-./metascan-query -query baddomain.org -apikey YOURAPIKEY -format json
+./zetascan-query -query baddomain.org -apikey YOURAPIKEY -format json
 
 {Results:[
 	{
@@ -83,12 +83,12 @@ Query the metascan service using the JSON API method. View the [developer docs](
 
 ### Example IP query via DNS
 
-Query the metascan service using the DNS method. View available test IP and domains to query form the [developer docs](http://docs.metascan.io/#ip-addresses)
+Query the zetascan service using the DNS method. View available test IP and domains to query form the [developer docs](http://docs.zetascan.com/#ip-addresses)
 
-To use DNS, you must add your servers IP address to the metascan developer portal. An API key is not available.
+To use DNS, you must add your servers IP address to the zetascan developer portal. An API key is not available.
 
 ```
-./metascan-query.go -query 127.9.9.1 -ipauth -format dns
+./zetascan-query.go -query 127.9.9.1 -ipauth -format dns
 
 {Results:[
 	{
@@ -109,30 +109,30 @@ package main
 import (
 	"fmt"
 
-	"github.com/metascanio/go-metascan/metascan"
+	"github.com/zetascanio/go-zetascan/zetascan"
 )
 
 func main() {
 
 	var err error
-	var mymetascan metascan.Api
+	var myzetascan zetascan.Api
 
 	apiKey := ""   // Speciy an IP key
-	ipAuth := true // Auth via the IP address, which must be added via the metascan developer portal
+	ipAuth := true // Auth via the IP address, which must be added via the zetascan developer portal
 	query := "baddomain.org"
 
 	// Init with our API key
-	mymetascan, err = mymetascan.Init(apiKey, ipAuth)
+	myzetascan, err = myzetascan.Init(apiKey, ipAuth)
 
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	mymetascan.ApiMethod = "json"
+	myzetascan.ApiMethod = "json"
 
-	m, _ := mymetascan.Query(query)
+	m, _ := myzetascan.Query(query)
 
-	if mymetascan.IsMatch(&m) {
+	if myzetascan.IsMatch(&m) {
 
 		// Add logic, IP/domain is not trusted
 	} else {
