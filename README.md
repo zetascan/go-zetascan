@@ -101,14 +101,14 @@ To use DNS, you must add your servers IP address to the zetascan developer porta
 
 ## Developer example
 
-See example.go
+See examples/cli/test-query.go
 
-```
+```go
 package main
 
 import (
 	"fmt"
-
+	"os"
 	"github.com/zetascanio/go-zetascan/zetascan"
 )
 
@@ -119,7 +119,18 @@ func main() {
 
 	apiKey := ""   // Speciy an IP key
 	ipAuth := true // Auth via the IP address, which must be added via the zetascan developer portal
-	query := "baddomain.org"
+
+	var query string
+
+	// First argument is the domain or IP
+	if(len(os.Args) > 1) {
+		query = os.Args[1]
+		
+	} else {
+		query = "baddomain.org"
+	}
+
+	fmt.Println("Querying", query)
 
 	// Init with our API key
 	myzetascan, err = myzetascan.Init(apiKey, ipAuth)
@@ -128,21 +139,130 @@ func main() {
 		fmt.Println(err)
 	}
 
+	// Query via the JSON method
 	myzetascan.ApiMethod = "json"
-
 	m, _ := myzetascan.Query(query)
 
-	if myzetascan.IsMatch(&m) {
+	// Find the record score
+	// The minimum score is -0.1, meaning that an item was found in White List only. Score 0 means that the item is not found in our DB, and the maximum score is 1. In general, items with score above 0.35 shall be considered as spam or fraud.
+	score := myzetascan.Score(&m)
 
-		// Add logic, IP/domain is not trusted
+	// If whitelist, trust
+	if myzetascan.IsWhiteList(&m) {
+		fmt.Println("Whitelist hit, trusted record")
+	} else if myzetascan.IsBlackList(&m) && score > 0.35 {
+		// If blacklist and high score
+		fmt.Println("Blacklist hit, with a high score")
+	} else if myzetascan.IsBlackList(&m) && score < 0.35 {
+		// If blacklist low score
+		fmt.Println("Blacklist hit, with a lower score")
 	} else {
-
-		// Proceed as normal
-
+		// If no match
+		fmt.Println("No blacklist/whitelist match found")		
 	}
 
-	fmt.Println("Raw struct")
+	fmt.Println("\n\nRaw struct")
 	fmt.Printf("%+v", m)
 
 }
 ```
+
+### Usage
+
+Blacklist hit:
+
+```
+$ go run ./examples/cli/test-query.go baddomain.org
+
+Querying baddomain.org
+Blacklist hit, with a high score
+
+```
+
+Whitelist hit:
+
+```
+$ go run ./examples/cli/test-query.go 127.9.9.4
+
+Querying 127.9.9.4
+Whitelist hit, trusted record
+```
+
+
+## Web-server Example
+
+A sample go HTTP server is provided, which upon receiving a request, initiates a DNS lookup to Zetascan if the clients IP address is contained in a blacklist, and throws a HTTP 403 response code (Forbidden) if matched.
+
+A useful example to protect user signups forms, API end-points and critical services from known bot-nets, spammers, and to prevent blacklisted IP's abusing your infrastructure.
+
+```go
+package main
+
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/zetascanio/go-zetascan/zetascan"
+)
+
+func main() {
+	fmt.Println("Launching a test webserver on port 8000")
+	http.HandleFunc("/", hello)
+	http.ListenAndServe(":8000", nil)
+}
+
+func hello(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	var myzetascan zetascan.Api
+
+	// Query the remote users address, are they blacklisted?
+	query := r.RemoteAddr // "baddomain.org" , use for testing a blacklist hit
+
+	apiKey := ""   // Speciy an IP key
+	ipAuth := true // Auth via the IP address, which must be added via the zetascan developer portal
+
+	// Init with our API key
+	myzetascan, err = myzetascan.Init(apiKey, ipAuth)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// Query via the JSON method
+	myzetascan.ApiMethod = "dns"
+	m, _ := myzetascan.Query(query)
+
+	// Find the record score ( not supported via DNS, only DNS txt record)
+	// The minimum score is -0.1, meaning that an item was found in White List only. Score 0 means that the item is not found in our DB, and the maximum score is 1. In general, items with score above 0.35 shall be considered as spam or fraud.
+	//score := myzetascan.Score(&m)
+
+	// If whitelist, trust
+	if myzetascan.IsWhiteList(&m) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("200: OK - Whitelist hit, trusted record"))
+
+	} else if myzetascan.IsBlackList(&m) {
+		// If in a blacklist, throw a 403 error
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("403: Request denied - Blacklist hit!"))
+
+	} else {
+		// If no match, proceed as normal
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("200: OK - No blacklist/whitelist match found"))
+
+	}
+
+}
+```
+
+### Usage
+
+```
+$ go run ./examples/webserver/web-service.go
+Launching a test webserver on port 8000
+```
+
+Next, launch `http://localhost:8000` in your browser, your remote IP address will be looked up via the Zetascan service and a 200 (OK) response returned if no match/whitelist, otherwise a 403 (Forbidden) response returned if listed in a known blacklist.
+

@@ -378,6 +378,42 @@ func (myapi Api) IsMatch(response *JsonRecord) (status bool) {
 
 }
 
+// isMatch return if a result matched a whitelist/blacklist
+func (myapi Api) IsWhiteList(response *JsonRecord) (status bool) {
+
+	// Is the record a whitelist?
+	if response.Results[0].Wl == true {
+		return true
+	}
+
+	return false
+
+}
+
+// isMatch return if a result matched a whitelist/blacklist
+func (myapi Api) IsBlackList(response *JsonRecord) (status bool) {
+
+	// Is the record a whitelist?
+	if response.Results[0].Found == true && response.Results[0].Wl == false {
+		return true
+	}
+
+	return false
+
+}
+
+// isMatch return if a result matched a whitelist/blacklist
+func (myapi Api) Score(response *JsonRecord) (score float64) {
+
+	// Is the record a whitelist?
+	if response.Results[0].Found == true || response.Results[0].Wl == true {
+		return response.Results[0].Score
+	}
+
+	return
+
+}
+
 // Toggle SSL support
 func (myapi Api) ToggleSSL(ssl bool) (str string) {
 
