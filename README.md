@@ -266,3 +266,22 @@ Launching a test webserver on port 8000
 
 Next, launch `http://localhost:8000` in your browser, your remote IP address will be looked up via the Zetascan service and a 200 (OK) response returned if no match/whitelist, otherwise a 403 (Forbidden) response returned if listed in a known blacklist.
 
+# Benchmarking
+
+To benchmark run the following, provided you have go version 1.7+ installed
+
+```
+export GOPATH=~/go/
+mkdir ~/go
+
+go get github.com/zetascanio/go-zetascan
+go get github.com/miekg/dns
+ 
+cd ~/go/src/github.com/zetascanio/go-zetascan/
+
+go run zetascan-query.go -ipauth -verify -count 3 -csv
+```
+
+>NOTE: Add your servers IP address via the developer portal
+
+
