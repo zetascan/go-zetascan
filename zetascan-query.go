@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/zetascanio/go-zetascan/zetascan"
+	"github.com/zetascan/go-zetascan/zetascan"
 )
 
 func main() {

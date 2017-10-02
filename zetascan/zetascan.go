@@ -23,6 +23,8 @@ type Api struct {
 	ApiMethod   string
 	apiVersion  string
 	apiProtocol string
+	DnsMethod   string
+	DnsType     string
 }
 
 type Query struct {
@@ -57,6 +59,7 @@ type JsonResults []struct {
 	Item       string       `json:"item"`
 	Found      bool         `json:"found"`
 	Score      float64      `json:"score"`
+	WebScore   float64      `json:"webscore"`
 	FromSubnet bool         `json:"fromSubnet"`
 	Sources    []string     `json:"sources"`
 	Wl         bool         `json:"wl"`
@@ -87,10 +90,22 @@ func (myapi Api) Init(apiKey string, ipcheck bool) (myapi2 Api, err error) {
 	}
 
 	// TODO: Change to new zetascan URL
-	myapi.apiURL = "api.metascan.io"
+	// a.	restlb.zetascan.com – load balanced and high availability end point – a bit slower, but guarantees 100% response rate.
+	// b.	api.zetascan.com – a bit faster. However, you may hit a server with high load or currently not functioning. You should handle this and issue another request.
+	// c.	dnslb.zetasca.com – experimental DNS Load balancer and high availability end point.
+
+	myapi.apiURL = "restlb.zetascan.com"
 	myapi.apiProtocol = myapi.ToggleSSL(true) // Default to SSL
 	myapi.ApiMethod = "http"
-	myapi.apiVersion = "v1"
+
+	// Version bump from v1 to v2 for Zetascan v2 release
+	myapi.apiVersion = "v2"
+
+	// DNS has two methods, direct or
+	myapi.DnsMethod = "nameserver"
+
+	// Support lookups with A records or txt
+	myapi.DnsType = "A"
 
 	// Check if https required
 	if myapi.apiProtocol == "http" && apiKey != "" && ipcheck == false {
@@ -242,6 +257,7 @@ func (myapi Api) parseResult(resp *http.Response) (data JsonRecord, err error) {
 			Item       string       `json:"item"`
 			Found      bool         `json:"found"`
 			Score      float64      `json:"score"`
+			WebScore   float64      `json:"webscore"`
 			FromSubnet bool         `json:"fromSubnet"`
 			Sources    []string     `json:"sources"`
 			Wl         bool         `json:"wl"`
@@ -267,18 +283,63 @@ func (myapi Api) parseResult(resp *http.Response) (data JsonRecord, err error) {
 			if resp.StatusCode == 204 {
 				data.Results[0].Found = false
 			} else {
+
+				//data.Results[0].Found = true
+			}
+
+			/*
+			   Sample header response:
+
+			   Cache-Control:no-cache, no-store, must-revalidate
+			   Connection:keep-alive
+			   Content-Length:2
+			   Content-Type:text/plain; charset=utf-8
+			   Date:Mon, 02 Oct 2017 06:09:39 GMT
+			   Expires:0
+			   Pragma:no-cache
+			   Server:nginx/1.13.1
+			   Strict-Transport-Security:max-age=63072000; includeSubdomains
+			   X-Content-Type-Options:nosniff
+
+			   X-Frame-Options:DENY
+			   x-zetascan-items:baddomain.org
+			   -x-zetascan-score:1
+			   -x-zetascan-sources:DBL;RED;GREY;GOLD;BLACK
+			   x-zetascan-status:success
+			   x-zetascan-time:1500970900
+			   -x-zetascan-webscore:0.6
+			   x-zetascan-wl:null
+			*/
+
+			// Populate our struct with details of the request
+			data.Results[0].Score, _ = strconv.ParseFloat(resp.Header.Get("x-zetascan-score"), 32)
+			data.Results[0].WebScore, _ = strconv.ParseFloat(resp.Header.Get("x-zetascan-webscore"), 32)
+
+			// Populate our struct with details of the request
+			data.Results[0].Sources = strings.Split(";", resp.Header.Get("x-zetascan-sources"))
+
+			// TODO: Clarify, since JSON wl and wl-data differ from HTTP query
+			//wl := resp.Header.Get("x-zetascan-wl")
+
+			// TODO: Workaround. HTTP should return a wl header.
+			if data.Results[0].Score <= -0.1 {
+				data.Results[0].Wl = true
+			} else {
+				data.Results[0].Wl = false
+			}
+
+			// Todo, Split based on ; similar to Sources?
+			data.Results[0].Wldata = resp.Header.Get("x-zetascan-wl")
+
+			data.Status = resp.Header.Get("x-zetascan-success")
+
+			// TODO: Workaround, since HTTP missing the found header
+			if data.Results[0].Wl == true {
+				data.Results[0].Found = false
+			} else if data.Results[0].Score > 0 {
 				data.Results[0].Found = true
 			}
 
-			// Populate our struct with details of the request
-			data.Results[0].Score, _ = strconv.ParseFloat(resp.Header.Get("X-zetascan-Score"), 32)
-
-			// Populate our struct with details of the request
-			data.Results[0].Sources = strings.Split(";", resp.Header.Get("X-zetascan-Sources"))
-
-			data.Results[0].Wldata = resp.Header.Get("X-zetascan-Wl")
-
-			data.Status = resp.Header.Get("Success")
 		}
 
 	case "text":
@@ -299,12 +360,30 @@ func (myapi Api) parseResult(resp *http.Response) (data JsonRecord, err error) {
 				the second bool is true, if found in any white list,
 				wldata contains the data from the white list, and
 				score is followed by the list of sources where the item was found.
+
+				Updated for v2
+
+				baddomain.org:true,false,,1,0.6,dbl,red,gold,grey,black okdomain.org:true,true,,-0.1,-0.1,white 127.9.9.1:true,false,,0.95,0.6,xbl,sbl
+
+				okdomain.org:false,true,,-0.1,-0.1,white
+
 			*/
+
+			// Are we included in a blacklist?
 			if str[0] == "true" {
 				data.Results[0].Found = true
 			} else {
 				data.Results[0].Found = false
 			}
+
+			// Are we included in a whitelist?
+			if str[1] == "true" {
+				data.Results[0].Wl = true
+			} else {
+				data.Results[0].Wl = false
+			}
+
+			data.Results[0].Wldata = str[2]
 
 			// TODO: Should be a float32 vs float64
 			data.Results[0].Score, _ = strconv.ParseFloat(str[3], 32)
@@ -443,6 +522,7 @@ func (myapi Api) ParseDNS(results []net.IP) (data JsonRecord, err error) {
 			Item       string       `json:"item"`
 			Found      bool         `json:"found"`
 			Score      float64      `json:"score"`
+			WebScore   float64      `json:"webscore"`
 			FromSubnet bool         `json:"fromSubnet"`
 			Sources    []string     `json:"sources"`
 			Wl         bool         `json:"wl"`
@@ -502,7 +582,13 @@ func (myapi Api) QueryDNS(query string, retry int) (json []net.IP, err error) {
 	msg.Question[0] = dns.Question{Name: dns.Fqdn(query), Qtype: dns.TypeA, Qclass: dns.ClassINET}
 
 	// Use the zetascan DNS server directly for the query
-	in, err := dns.Exchange(msg, myapi.apiURL+":53")
+
+	// TODO:
+	// The new (v2) format allows only A, AAAA and TXT queries, and is as follows:domain.com.{key}.api.zetascan.com
+	// Currenrtly using the v1 method
+	// dig baddomain.org @api.zetascan.com
+
+	in, err := dns.Exchange(msg, "api.zetascan.com:53")
 
 	// Load the result(s) into a net.IP struct
 	result := []net.IP{}
