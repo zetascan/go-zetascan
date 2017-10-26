@@ -94,7 +94,7 @@ func (myapi Api) Init(apiKey string, ipcheck bool) (myapi2 Api, err error) {
 	// b.	api.zetascan.com – a bit faster. However, you may hit a server with high load or currently not functioning. You should handle this and issue another request.
 	// c.	dnslb.zetasca.com – experimental DNS Load balancer and high availability end point.
 
-	myapi.apiURL = "restlb.zetascan.com"
+	myapi.apiURL = "api.zetascan.com"
 	myapi.apiProtocol = myapi.ToggleSSL(true) // Default to SSL
 	myapi.ApiMethod = "http"
 
@@ -457,7 +457,7 @@ func (myapi Api) IsMatch(response *JsonRecord) (status bool) {
 
 }
 
-// isMatch return if a result matched a whitelist/blacklist
+// IsWhiteList return if a result matched a whitelist
 func (myapi Api) IsWhiteList(response *JsonRecord) (status bool) {
 
 	// Is the record a whitelist?
@@ -469,7 +469,7 @@ func (myapi Api) IsWhiteList(response *JsonRecord) (status bool) {
 
 }
 
-// isMatch return if a result matched a whitelist/blacklist
+// IsBlackList return if a result matched a blacklist
 func (myapi Api) IsBlackList(response *JsonRecord) (status bool) {
 
 	// Is the record a whitelist?
@@ -481,7 +481,7 @@ func (myapi Api) IsBlackList(response *JsonRecord) (status bool) {
 
 }
 
-// isMatch return if a result matched a whitelist/blacklist
+// Return the score if a result matched a whitelist/blacklist
 func (myapi Api) Score(response *JsonRecord) (score float64) {
 
 	// Is the record a whitelist?
