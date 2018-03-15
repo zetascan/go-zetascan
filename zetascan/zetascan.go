@@ -481,12 +481,24 @@ func (myapi Api) IsBlackList(response *JsonRecord) (status bool) {
 
 }
 
-// Return the score if a result matched a whitelist/blacklist
+// Return the score if a result matched a whitelist/blacklist on the MTA/default score
 func (myapi Api) Score(response *JsonRecord) (score float64) {
 
 	// Is the record a whitelist?
 	if response.Results[0].Found == true || response.Results[0].Wl == true {
 		return response.Results[0].Score
+	}
+
+	return
+
+}
+
+// Return the score if a result matched a whitelist/blacklist on the Webscore value
+func (myapi Api) WebScore(response *JsonRecord) (score float64) {
+
+	// Is the record a whitelist?
+	if response.Results[0].Found == true || response.Results[0].Wl == true {
+		return response.Results[0].WebScore
 	}
 
 	return
